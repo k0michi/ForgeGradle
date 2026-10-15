@@ -1,4 +1,4 @@
-name: Check if Forge 1.7.10 builds
+name: Check if Forge builds
 
 on:
   push:
@@ -11,12 +11,23 @@ permissions:
 
 env:
   FORGE_REPO: https://github.com/MinecraftForge/MinecraftForge.git
-  FORGE_BRANCH: '1.7.10'
-  FORGE_COMMIT: c6aa04325e8a80af88755adb2339a402e7e90ebb
 
 jobs:
   build:
+    name: Forge ${{ matrix.mc }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mc: '1.7.10'
+            branch: '1.7.10'
+            commit: c6aa04325e8a80af88755adb2339a402e7e90ebb
+            build: 1614
+          - mc: '1.7.2'
+            branch: mc172
+            commit: e08c63b57bc51bb9f4fda335457a61c8d561aea1
+            build: 1161
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,33 +46,36 @@ jobs:
           echo "FG_VERSION=$(./gradlew -q properties | sed -n 's/^version: //p')" >> "$GITHUB_ENV"
 
       - uses: actions/upload-artifact@v4
+        if: matrix.mc == '1.7.10'
         with:
           name: ForgeGradle
           path: build/libs/
 
-      - name: Checkout Forge 1.7.10
+      - name: Checkout Forge ${{ matrix.mc }}
         run: |
-          git clone --filter=blob:none --single-branch -b "$FORGE_BRANCH" "$FORGE_REPO" forge
-          git -C forge checkout -B "$FORGE_BRANCH" "$FORGE_COMMIT"
+          git clone --filter=blob:none --single-branch -b "${{ matrix.branch }}" "$FORGE_REPO" forge
+          git -C forge checkout -B "${{ matrix.branch }}" "${{ matrix.commit }}"
+          git -C forge submodule update --init --filter=blob:none
 
-      - name: Build Forge 1.7.10
+      - name: Build Forge ${{ matrix.mc }}
         working-directory: forge
         env:
-          BUILD_NUMBER: 1614
+          BUILD_NUMBER: ${{ matrix.build }}
+        # Use Gradle from ForgeGradle
         # Skips launch4j
         run: >-
-          ./gradlew --init-script ../.github/ci/use-local-fg.gradle
+          ../gradlew --init-script ../.github/ci/use-local-fg.gradle
           setupForge ciWriteBuildNumber build -x downloadL4J -x extractL4J -x generateXmlConfig -x createExe -x launch4j
 
-      - name: Check the Forge 1.7.10 outputs
+      - name: Check the Forge ${{ matrix.mc }} outputs
         working-directory: forge/build/distributions
         run: |
           ls -l
           for kind in universal installer userdev src; do
-            ls forge-1.7.10-*-"$kind".* > /dev/null || { echo "::error::Missing the Forge $kind output"; exit 1; }
+            ls forge-${{ matrix.mc }}-*-"$kind".* > /dev/null || { echo "::error::Missing the Forge $kind output"; exit 1; }
           done
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Forge-1.7.10
+          name: Forge-${{ matrix.mc }}
           path: forge/build/distributions/

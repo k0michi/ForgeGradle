@@ -38,12 +38,16 @@ import org.gradle.api.tasks.Delete;
 import org.gradle.testfixtures.ProjectBuilder;
 
 import com.google.common.base.Charsets;
+import com.google.common.base.Joiner;
 import com.google.common.base.Strings;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.io.ByteStreams;
 import com.google.common.io.Files;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonIOException;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 
@@ -235,13 +239,13 @@ public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Proj
         task = makeTask("downloadClient", DownloadTask.class);
         {
             task.setOutput(delayedFile(Constants.JAR_CLIENT_FRESH));
-            task.setUrl(delayedString(Constants.MC_JAR_URL));
+            task.setUrl(delayedMcUrl("downloads", "client", "url"));
         }
 
         task = makeTask("downloadServer", DownloadTask.class);
         {
             task.setOutput(delayedFile(Constants.JAR_SERVER_FRESH));
-            task.setUrl(delayedString(Constants.MC_SERVER_URL));
+            task.setUrl(delayedMcUrl("downloads", "server", "url"));
         }
 
         ObtainFernFlowerTask mcpTask = makeTask("downloadMcpTools", ObtainFernFlowerTask.class);
@@ -252,7 +256,7 @@ public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Proj
 
         EtagDownloadTask etagDlTask = makeTask("getAssetsIndex", EtagDownloadTask.class);
         {
-            etagDlTask.setUrl(delayedString(Constants.ASSETS_INDEX_URL));
+            etagDlTask.setUrl(delayedMcUrl("assetIndex", "url"));
             etagDlTask.setFile(delayedFile(Constants.ASSETS + "/indexes/{ASSET_INDEX}.json"));
             etagDlTask.setDieWithError(false);
 
@@ -281,7 +285,7 @@ public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Proj
 
         etagDlTask = makeTask("getVersionJson", EtagDownloadTask.class);
         {
-            etagDlTask.setUrl(delayedString(Constants.MC_JSON_URL));
+            etagDlTask.setUrl(delayedMcUrl());
             etagDlTask.setFile(delayedFile(Constants.VERSION_JSON));
             etagDlTask.setDieWithError(false);
             etagDlTask.doLast(new Closure<Boolean>(project) // normalizes to linux endings
@@ -582,4 +586,59 @@ public abstract class BasePlugin<K extends BaseExtension> implements Plugin<Proj
         return new DelayedFileTree(project, path, true, this);
     }
 
+    private Map<String, String> mcVersionJsonUrls;
+
+    protected DelayedString delayedMcUrl(final String... path)
+    {
+        return new DelayedString(project, "{MC_VERSION}", this) {
+            private static final long serialVersionUID = 1L;
+
+            @Override
+            public String resolveDelayed()
+            {
+                String version = super.resolveDelayed();
+                return path.length == 0 ? getMcVersionJsonUrl(version) : getMcVersionJsonEntry(version, path);
+            }
+        };
+    }
+
+    protected String getMcVersionJsonUrl(String version)
+    {
+        if (mcVersionJsonUrls == null)
+        {
+            File cache = Constants.cacheFile(project, "caches", "minecraft", "McManifest.json");
+            String data = getWithEtag(Constants.MC_MANIFEST_URL, cache, new File(cache.getPath() + ".etag"));
+            if (data == null)
+                throw new RuntimeException("Could not download the Minecraft version manifest: " + Constants.MC_MANIFEST_URL);
+
+            mcVersionJsonUrls = new HashMap<String, String>();
+            for (JsonElement entry : new JsonParser().parse(data).getAsJsonObject().getAsJsonArray("versions"))
+            {
+                JsonObject obj = entry.getAsJsonObject();
+                mcVersionJsonUrls.put(obj.get("id").getAsString(), obj.get("url").getAsString());
+            }
+        }
+
+        String url = mcVersionJsonUrls.get(version);
+        if (url == null)
+            throw new RuntimeException("Minecraft version " + version + " is not in the version manifest: " + Constants.MC_MANIFEST_URL);
+        return url;
+    }
+
+    protected String getMcVersionJsonEntry(String version, String... path)
+    {
+        File cache = Constants.cacheFile(project, "caches", "minecraft", "versionJsons", version + ".json");
+        String data = getWithEtag(getMcVersionJsonUrl(version), cache, new File(cache.getPath() + ".etag"));
+        if (data == null)
+            throw new RuntimeException("Could not download the version json for Minecraft " + version);
+
+        JsonElement element = new JsonParser().parse(data);
+        for (String key : path)
+        {
+            if (!element.isJsonObject() || !element.getAsJsonObject().has(key))
+                throw new RuntimeException("The version json for Minecraft " + version + " has no " + Joiner.on('.').join(path));
+            element = element.getAsJsonObject().get(key);
+        }
+        return element.getAsString();
+    }
 }

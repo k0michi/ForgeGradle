@@ -28,7 +28,18 @@ public class EtagDownloadTask extends DefaultTask
     @TaskAction
     public void doTask() throws IOException
     {
-        URL url = getUrl();
+        URL url;
+        try
+        {
+            url = getUrl();
+        }
+        catch (Throwable e)
+        {
+            // manifest/version fetch may throw, treat it like an error like other
+            error("Could not resolve the url: " + e.getLocalizedMessage());
+            return;
+        }
+
         File outFile = getFile();
         File etagFile = getProject().file(getFile().getPath() + ".etag");
 

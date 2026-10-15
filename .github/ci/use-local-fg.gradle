@@ -1,0 +1,16 @@
+allprojects {
+    buildscript {
+        repositories.all { repo ->
+            if (repo instanceof MavenArtifactRepository && repo.url.scheme == 'http') {
+                repo.url = repo.url.toString()
+                    .replace('http://files.minecraftforge.net/maven', 'https://maven.minecraftforge.net')
+                    .replace('http://', 'https://')
+            }
+        }
+        configurations.classpath.resolutionStrategy.eachDependency { details ->
+            if (details.requested.group == 'net.minecraftforge.gradle' && details.requested.name == 'ForgeGradle') {
+                details.useVersion System.getenv('FG_VERSION')
+            }
+        }
+    }
+}

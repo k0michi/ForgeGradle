@@ -12,7 +12,7 @@ permissions:
 env:
   FORGE_REPO: https://github.com/MinecraftForge/MinecraftForge.git
   FORGE_BRANCH: '1.7.10'
-  FORGE_COMMIT: 9274e4fe435cb415099a8216c1b42235f185443e
+  FORGE_COMMIT: c6aa04325e8a80af88755adb2339a402e7e90ebb
 
 jobs:
   build:
@@ -51,7 +51,7 @@ jobs:
         # Skips launch4j
         run: >-
           ./gradlew --init-script ../.github/ci/use-local-fg.gradle
-          setupForge build -x downloadL4J -x extractL4J -x generateXmlConfig -x createExe -x launch4j
+          setupForge ciWriteBuildNumber build -x downloadL4J -x extractL4J -x generateXmlConfig -x createExe -x launch4j
 
       - name: Check the Forge 1.7.10 outputs
         working-directory: forge/build/distributions
